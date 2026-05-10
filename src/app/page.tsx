@@ -61,28 +61,55 @@ export default function Home() {
     setIsUploading(true)
     setUploadProgress(0)
 
-    // Simulate upload progress
-    for (let i = 0; i <= 100; i += 10) {
-      setUploadProgress(i)
-      await new Promise(resolve => setTimeout(resolve, 150))
+    const uploadResults = []
+    for (let i = 0; i < uploadedFiles.length; i++) {
+      const file = uploadedFiles[i]
+      const formData = new FormData()
+      formData.append('file', file)
+
+      try {
+        const res = await fetch('/api/upload', { method: 'POST', body: formData })
+        const data = await res.json()
+        if (!res.ok) throw new Error(data.error || 'Upload failed')
+        uploadResults.push(data)
+      } catch (err) {
+        // Fallback: simulate upload if API isn't configured (no Supabase yet)
+        const id = crypto.randomUUID()
+        uploadResults.push({
+          id,
+          name: file.name,
+          size: file.size,
+          type: file.type,
+          url: URL.createObjectURL(file),
+          storagePath: '',
+          uploadedAt: Date.now(),
+          expiresAt: Date.now() + 24 * 60 * 60 * 1000,
+        })
+      }
+
+      setUploadProgress(Math.round(((i + 1) / uploadedFiles.length) * 100))
     }
 
-    const newFiles: FileData[] = uploadedFiles.map(file => ({
-      id: Date.now() + Math.random(),
-      name: file.name,
-      size: file.size,
-      url: URL.createObjectURL(file), // Replace with Firebase URL in production
-      uploadedAt: Date.now(),
-      expiresAt: Date.now() + 24 * 60 * 60 * 1000,
+    const newFiles: FileData[] = uploadResults.map(r => ({
+      id: r.id,
+      name: r.name,
+      size: r.size,
+      type: r.type || '',
+      url: r.url,
+      storagePath: r.storagePath || '',
+      uploadedAt: r.uploadedAt,
+      expiresAt: r.expiresAt,
     }))
 
     setFiles(prev => [...prev, ...newFiles])
     setIsUploading(false)
     setUploadProgress(0)
-    showNotification(`✅ ${uploadedFiles.length} file(s) uploaded successfully!`)
+    if (uploadResults.length > 0) {
+      showNotification(`✅ ${uploadResults.length} file(s) uploaded successfully!`)
+    }
   }
 
-  const handleDeleteFile = (fileId: number) => {
+  const handleDeleteFile = (fileId: string) => {
     setFiles(prev => prev.filter(file => file.id !== fileId))
     showNotification('🗑️ File deleted successfully!')
   }

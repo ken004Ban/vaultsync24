@@ -1,8 +1,10 @@
 export interface FileData {
-    id: number
+    id: string
     name: string
     size: number
+    type?: string
     url: string
+    storagePath?: string
     uploadedAt: number
     expiresAt: number
   }
@@ -27,7 +29,7 @@ export interface FileData {
   
   export interface FileCardProps {
     file: FileData
-    onDelete: (fileId: number) => void
+    onDelete: (fileId: string) => void
     onCopyLink: (link: string) => void
   }
   

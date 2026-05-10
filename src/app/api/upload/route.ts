@@ -1,14 +1,18 @@
-// src/app/api/upload/route.ts
 import { NextRequest, NextResponse } from 'next/server'
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage'
 import { v4 as uuidv4 } from 'uuid'
-import { storage } from '@/lib/firebase'
+import { supabaseAdmin, isSupabaseReady } from '@/lib/supabase'
 
-// Disable edge runtime if using Firebase Storage
 export const runtime = 'nodejs'
 
 export async function POST(req: NextRequest) {
   try {
+    if (!isSupabaseReady || !supabaseAdmin) {
+      return NextResponse.json(
+        { error: 'Storage not configured. Set Supabase env vars.' },
+        { status: 500 }
+      )
+    }
+
     const formData = await req.formData()
     const file = formData.get('file') as File | null
 
@@ -16,22 +20,62 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'No file uploaded' }, { status: 400 })
     }
 
+    const fileId = uuidv4()
     const fileBuffer = Buffer.from(await file.arrayBuffer())
-    const fileName = `${uuidv4()}_${file.name}`
-    const fileRef = ref(storage, `uploads/${fileName}`)
+    const storagePath = `${fileId}_${file.name}`
 
-    // Upload to Firebase Storage
-    await uploadBytes(fileRef, fileBuffer, {
-      contentType: file.type,
-    })
+    const { error: uploadError } = await supabaseAdmin.storage
+      .from('uploads')
+      .upload(storagePath, fileBuffer, {
+        contentType: file.type,
+        upsert: false,
+      })
 
-    const downloadURL = await getDownloadURL(fileRef)
+    if (uploadError) {
+      throw new Error(`Storage upload failed: ${uploadError.message}`)
+    }
 
-    return NextResponse.json({ success: true, url: downloadURL })
+    const { data: signedUrlData, error: signedUrlError } = await supabaseAdmin.storage
+      .from('uploads')
+      .createSignedUrl(storagePath, 60 * 60 * 24)
+
+    if (signedUrlError || !signedUrlData) {
+      throw new Error(`Signed URL generation failed: ${signedUrlError?.message}`)
+    }
+
+    const now = Date.now()
+    const metadata = {
+      id: fileId,
+      name: file.name,
+      size: file.size,
+      type: file.type,
+      storagePath,
+      url: signedUrlData.signedUrl,
+      uploadedAt: now,
+      expiresAt: now + 24 * 60 * 60 * 1000,
+    }
+
+    const { error: dbError } = await supabaseAdmin
+      .from('files')
+      .insert({
+        id: fileId,
+        name: file.name,
+        size: file.size,
+        type: file.type,
+        storage_path: storagePath,
+        url: signedUrlData.signedUrl,
+        uploaded_at: now,
+        expires_at: now + 24 * 60 * 60 * 1000,
+      })
+
+    if (dbError) {
+      throw new Error(`DB insert failed: ${dbError.message}`)
+    }
+
+    return NextResponse.json({ success: true, ...metadata })
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Unknown error'
     console.error('Upload failed:', message)
-
     return NextResponse.json(
       { error: 'Upload failed', details: message },
       { status: 500 }

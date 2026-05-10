@@ -22,7 +22,7 @@ export const formatTimeRemaining = (milliseconds: number): string => {
   return `${seconds}s`
 }
 
-export const generateShareableLink = (fileId: number): string => {
+export const generateShareableLink = (fileId: string): string => {
   return `${window.location.origin}/download/${fileId}`
 }
 

@@ -31,14 +31,7 @@ export function FileCard({ file, onDelete, onCopyLink }: FileCardProps) {
 
   const handleDownload = () => {
     if (expired) return
-    
-    // Create download link
-    const link = document.createElement('a')
-    link.href = file.url
-    link.download = file.name
-    document.body.appendChild(link)
-    link.click()
-    document.body.removeChild(link)
+    window.open(file.url, '_blank')
   }
 
   const handleCopyLink = () => {
